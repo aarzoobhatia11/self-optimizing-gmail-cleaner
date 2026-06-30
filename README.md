@@ -104,20 +104,40 @@ the **SQL Editor** → paste and run [`schema.sql`](schema.sql). This creates th
 **3. Connect the connectors in Claude.** At [claude.ai](https://claude.ai) → Settings → Connectors,
 connect **Gmail** and **Supabase** (authorize your Supabase project). *(See [🧰 Tools & accounts](#-tools--accounts-you-need).)*
 
-**4. Create Routine 1 — `cleanup`.** At [claude.ai/code/routines](https://claude.ai/code/routines) →
-New routine:
-- **Name** it anything (e.g. "Cleanup Gmail") — the name is cosmetic.
-- **Attach this repo**, add the **Gmail** and **Supabase** connectors.
-- **Instructions box** — point the agent at the file (so repo edits auto-apply, no re-pasting):
-  `Read routines/cleanup_gmail.md from the attached repo and follow the block between the >>> and <<< markers, using the SETTINGS at the top.`
-- **Settings** live in the SETTINGS block at the top of [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) — routines have no env-var field, so edit the numbers there (see [⚙️ Settings explained](#️-settings-explained-environment-variables)). Leave the routine's **Environment box empty** — there are no secrets (Gmail/Supabase use connectors).
-- **Trigger: weekly** (e.g. Mon 8am). One weekly trigger is enough — the routine paces itself
-  (details in [🕒 Scheduling & frequency](#-scheduling--frequency)).
-  *(For a first test, set `LOOKBACK_DAYS=3` and use "Run now".)*
+**4. Create Routine 1 — Cleanup Gmail.** At [claude.ai/code/routines](https://claude.ai/code/routines)
+→ **New routine**, and fill each section exactly:
 
-**5. (Optional) Create Routine 2 — `refine`.** Same flow with [`routines/refine_cleanup_prompt.md`](routines/refine_cleanup_prompt.md),
-connectors **Supabase + GitHub**, a **monthly** trigger. It opens a PR each month suggesting prompt
-improvements from your corrections; you review the diff and merge.
+| Section | What to put |
+|---|---|
+| **Name** | `Cleanup Gmail` (cosmetic — anything works). |
+| **Instructions** | `Read routines/cleanup_gmail.md from the attached repo and follow the instructions in the block between the >>> and <<< markers exactly, using the SETTINGS values at the top of that block. The classification rules are in prompts/classify_prompt.md in the same repo.` |
+| **Repo** | Attach this repo. |
+| **Connectors** | **Gmail + Supabase** only (no GitHub). |
+| **Trigger** | **Weekly**, one trigger (e.g. Mon 8am). Keeps the free Supabase tier awake, and the routine self-paces. |
+| **Behavior** | Defaults are fine. |
+| **Notifications** | Turn **on push** — this is how you get the "review by `<date>`" and "cleanup done" pings. |
+| **Permissions** | Leave **"Allow unrestricted git push" OFF** — cleanup never pushes to git, it only labels/trashes mail. |
+| **Environment** | Leave **empty** — no secrets (Gmail/Supabase use connectors); tuning values live in the repo SETTINGS block. |
+
+*Adjust tuning values in the SETTINGS block at the top of [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) — see [⚙️ Settings explained](#️-settings-explained-environment-variables). For a first test set `LOOKBACK_DAYS=3`, then use **Run now**.*
+
+**5. Create Routine 2 — Refine Cleanup Prompt.** **New routine** again:
+
+| Section | What to put |
+|---|---|
+| **Name** | `Refine Cleanup Prompt`. |
+| **Instructions** | `Read routines/refine_cleanup_prompt.md from the attached repo and follow the instructions in the block between the >>> and <<< markers exactly. Open a Pull Request with the change; never merge it yourself and never edit main directly.` |
+| **Repo** | Attach this repo. |
+| **Connectors** | **Supabase + GitHub** (no Gmail — it never touches mail). Authorize GitHub with **write access** to this repo so it can open the PR. |
+| **Trigger** | **Custom** cron `0 9 1 * *` → 9 AM on the 1st of each month. |
+| **Behavior** | Defaults are fine. |
+| **Notifications** | Turn **on push** so you're told when a PR is opened. |
+| **Permissions** | Leave **"Allow unrestricted git push" OFF** — it opens a PR via the GitHub connector and must never push to `main`. |
+| **Environment** | Leave **empty**. |
+
+*Monthly, it reads your corrections from Supabase, finds patterns, and opens a PR tweaking
+`prompts/classify_prompt.md` for you to review and merge (or opens nothing if there's no clear pattern).
+Your weekly cleanup keeps Supabase active, so the monthly cadence never hits the 7-day pause.*
 
 ---
 
