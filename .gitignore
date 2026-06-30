@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# This is a public, code-only repo: no secrets, no personal data.
+# State lives in your private Supabase project (see schema.sql), never in git.
