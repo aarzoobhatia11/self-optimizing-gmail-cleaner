@@ -128,7 +128,7 @@ connect **Gmail** and **Supabase** (authorize your Supabase project). *(See [�
 | **Name** | `Refine Cleanup Prompt`. |
 | **Instructions** | `Read routines/refine_cleanup_prompt.md from the attached repo and follow the instructions in the block between the >>> and <<< markers exactly. Open a Pull Request with the change; never merge it yourself and never edit main directly.` |
 | **Repo** | Attach this repo. |
-| **Connectors** | **Supabase + GitHub** (no Gmail — it never touches mail). Authorize GitHub with **write access** to this repo so it can open the PR. |
+| **Connectors** | **Supabase** only (no Gmail — it never touches mail). GitHub is **not** a connector here — repo + PR access comes from **attaching this repo** (the chip with the branch icon). Make sure your Claude–GitHub integration has **write** access to the repo. |
 | **Trigger** | **Custom** cron `0 9 1 * *` → 9 AM on the 1st of each month. |
 | **Behavior** | Defaults are fine. |
 | **Notifications** | Turn **on push** so you're told when a PR is opened. |
