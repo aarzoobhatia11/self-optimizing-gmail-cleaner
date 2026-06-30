@@ -251,4 +251,4 @@ it succeeded).
 | `routines/refine_cleanup_prompt.md` | Routine 2 — monthly prompt-improvement PR. |
 | `schema.sql` | The Supabase tables (run once). |
 
-Issues and PRs welcome. Licensed under the MIT License.
+Issues and PRs welcome.
