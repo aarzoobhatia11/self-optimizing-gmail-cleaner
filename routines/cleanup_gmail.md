@@ -7,9 +7,16 @@ it weekly, daily, or hourly — extra runs simply do nothing.
 ## One-time setup
 1. Create a free **Supabase** project and run [`schema.sql`](../schema.sql) in its SQL editor.
 2. New routine → **attach this repo** → add **two connectors**: **Gmail** and **Supabase**.
-3. Env vars: `CYCLE_DAYS=7`, `DELETE_AFTER_DAYS=3`, `REMIND_EVERY_HOURS=24`, `CHUNK_SIZE=100`,
-   `LOOKBACK_DAYS=30`, `GRADUATE_ROUNDS=2`.
-4. **One weekly trigger** (e.g. Mon 8am) is enough — the routine paces itself.
+3. In the **Instructions box**, just point the agent at this file (recommended — repo edits then apply
+   automatically, with no re-pasting):
+
+       Read routines/cleanup_gmail.md from the attached repo and follow the block between the
+       >>> and <<< markers exactly, using the SETTINGS values at the top of that block.
+
+   *(Alternatively, paste the whole block below into the box — but then you must re-paste after edits.)*
+4. Settings: routines have **no separate env-var field** — the tuning values live in the **SETTINGS
+   block at the top of the paste block** below (already filled with sensible defaults). Edit there.
+5. **One weekly trigger** (e.g. Mon 8am) is enough — the routine paces itself.
    *(Free-tier Supabase pauses after 7 days idle, so keep `CYCLE_DAYS ≤ 7` unless you're on Pro.)*
 
 > Your memory lives in Supabase, not this repo — so the repo stays public and code-only.
@@ -17,6 +24,14 @@ it weekly, daily, or hourly — extra runs simply do nothing.
 ---
 
 >>> PASTE EVERYTHING BELOW INTO THE INSTRUCTIONS BOX >>>
+
+# SETTINGS — your tuning knobs (use these values wherever the steps below reference them)
+- CYCLE_DAYS = 7            # how often a fresh cleanup cycle starts (7 = weekly)
+- DELETE_AFTER_DAYS = 3     # review window: days between proposal and trash (must be < CYCLE_DAYS)
+- REMIND_EVERY_HOURS = 24   # most often a reminder is sent while a window is open
+- CHUNK_SIZE = 100          # emails classified per batch (no overall cap)
+- LOOKBACK_DAYS = 30        # FIRST run only: days of past mail to scan
+- GRADUATE_ROUNDS = 2       # confirmed-delete rounds before a seldom-read sender auto-deletes
 
 # ROLE
 You are my Gmail cleanup agent. You have two connectors: **Gmail** (read mail, manage labels, trash)

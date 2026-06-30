@@ -106,9 +106,11 @@ connect **Gmail** and **Supabase** (authorize your Supabase project). *(See [�
 
 **4. Create Routine 1 — `cleanup`.** At [claude.ai/code/routines](https://claude.ai/code/routines) →
 New routine:
+- **Name** it anything (e.g. "Cleanup Gmail") — the name is cosmetic.
 - **Attach this repo**, add the **Gmail** and **Supabase** connectors.
-- Paste the instructions from [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) (between the `>>>` markers).
-- Set the **env vars** — see [⚙️ Settings explained](#️-settings-explained-environment-variables).
+- **Instructions box** — point the agent at the file (so repo edits auto-apply, no re-pasting):
+  `Read routines/cleanup_gmail.md from the attached repo and follow the block between the >>> and <<< markers, using the SETTINGS at the top.`
+- **Settings** live in the SETTINGS block at the top of [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) — routines have no env-var field, so edit the numbers there (see [⚙️ Settings explained](#️-settings-explained-environment-variables)). Leave the routine's **Environment box empty** — there are no secrets (Gmail/Supabase use connectors).
 - **Trigger: weekly** (e.g. Mon 8am). One weekly trigger is enough — the routine paces itself
   (details in [🕒 Scheduling & frequency](#-scheduling--frequency)).
   *(For a first test, set `LOOKBACK_DAYS=3` and use "Run now".)*
@@ -121,7 +123,8 @@ improvements from your corrections; you review the diff and merge.
 
 ## ⚙️ Settings explained (environment variables)
 
-Set these on the `cleanup` routine. The defaults suit a weekly personal-inbox cleanup.
+Routines have no separate env-var field, so these live in the **SETTINGS block at the top of the
+`cleanup` routine's instructions** (already filled with these defaults — edit the numbers there).
 
 | Variable | Default | What it does |
 |---|---|---|
