@@ -85,8 +85,9 @@ A4. With the Gmail connector, list every email received since `last_classify_at`
 
 A5. Classify in batches of `CHUNK_SIZE`. Split the emails into chunks of `CHUNK_SIZE`; for each chunk,
     build the metadata input per email (from, subject, snippet ≤300 chars, date, sizeBytes,
-    hasAttachments, isFromSelf, senderSeldomRead) and classify it per `prompts/classify_prompt.md`.
-    Merge all chunk results so every `messageId` appears exactly once.
+    hasAttachments, isFromSelf, isStarred, senderSeldomRead) and classify it per
+    `prompts/classify_prompt.md`. (`isStarred` = the email has Gmail's STARRED label.) Merge all chunk
+    results so every `messageId` appears exactly once.
 
 A6. Final keep/delete = the email's `decision`, then apply overrides: force KEEP for
     `always_keep_sender` and `protected_category`; force DELETE for `always_delete_sender` and the

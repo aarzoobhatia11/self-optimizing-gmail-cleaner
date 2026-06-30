@@ -8,10 +8,13 @@ the NEVER-DELETE or ALWAYS-KEEP rules below. Return ONLY a JSON array, one objec
 in the same order, with no prose and no markdown fences.
 
 ## Input per email
-`{ messageId, from, subject, snippet (<=300 chars), date, sizeBytes, hasAttachments, isFromSelf, senderSeldomRead }`
+`{ messageId, from, subject, snippet (<=300 chars), date, sizeBytes, hasAttachments, isFromSelf, isStarred, senderSeldomRead }`
 
 ## NEVER DELETE  (hard overrides — these always win, no matter what else applies)
 - Sent by me (`isFromSelf`).
+- Starred by me (`isStarred`) — a star means I explicitly flagged it as worth keeping.
+- Genuinely personal mail — written directly to me by an individual (a question, request, reply, or
+  1:1 conversation), not bulk / automated / marketing — even if it's from a sender I rarely hear from.
 - From a sender I read or reply to often (`senderSeldomRead` is false).
 - Anything sensitive / confidential — financial, legal, account, or identity documents.
 - Anything I've explicitly protected (see my rules / EXAMPLES below).
