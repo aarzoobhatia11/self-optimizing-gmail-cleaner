@@ -250,6 +250,5 @@ it succeeded).
 | `routines/cleanup_gmail.md` | Routine 1 — classify → remind → delete → learn (paste into the routine). |
 | `routines/refine_cleanup_prompt.md` | Routine 2 — monthly prompt-improvement PR. |
 | `schema.sql` | The Supabase tables (run once). |
-| `CLAUDE.md` | Project context for contributors. |
 
 Issues and PRs welcome. Licensed under the MIT License.

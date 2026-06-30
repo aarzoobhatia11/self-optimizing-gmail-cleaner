@@ -4,5 +4,8 @@
 # Logs
 *.log
 
+# Local-only Claude Code context (not needed by repo users)
+CLAUDE.md
+
 # This is a public, code-only repo: no secrets, no personal data.
 # State lives in your private Supabase project (see schema.sql), never in git.
