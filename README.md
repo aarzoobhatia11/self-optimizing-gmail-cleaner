@@ -20,7 +20,9 @@ Four feedback loops, all driven by the keep/delete edits you make each cycle:
 1. **Every decision becomes an example.** Each keep/untick is saved to Supabase. On the next run it ranks your recent decisions **corrections first → confident-but-wrong → most recent**, picks the **top 5** (varied across keep/delete and categories), and injects them into the classifier as few-shot examples. The cap is small on purpose - more examples bias the model.
 2. **Repeat offenders graduate to auto-delete.** Confirm-deleting a rarely-read sender a few cycles in a row promotes it to "always delete" - it stops needing your review.
 3. **Time-sensitive keeps wait in a deferred queue.** A booking or ticket you keep is parked with an expiry date and resurfaced for deletion only once it's stale.
-4. **A monthly PR sharpens the prompt.** The `refine` routine spots patterns in your corrections and opens a GitHub Pull Request improving the classifier's wording - you review and merge.
+4. **A monthly PR sharpens the prompt, but only if it passes an eval.** The `refine` routine spots patterns in last month's corrections and drafts a wording change - then **tests it on a held-out week it never learned from** and opens a GitHub Pull Request **only if the change reduces your false-deletes** without breaking the hard rules. You review and merge.
+
+**What it optimizes for:** **precision** - driving *false-deletes* (trashing a mail you wanted) toward zero. Accuracy is deliberately not the target: on a mostly-junk inbox, "delete everything" scores high accuracy but throws away keepers. `refine` also checks **hard-rule compliance** every run (e.g. did it ever propose deleting a starred mail?).
 
 **Net effect:** recurring mail handles itself, and the pile that needs your eyes shrinks toward just genuinely-new senders. The approval gate never disappears - it's your safety net - you just stop needing it.
 
@@ -89,7 +91,9 @@ Open each run's **session transcript** to see exactly what it did.
 
 ## Environment Variables
 
-No separate env-var field exists in routines, so these live in the **SETTINGS block at the top of the `cleanup` routine's instructions** - edit the numbers there.
+No separate env-var field exists in routines, so these live in the **SETTINGS block at the top of each routine's instructions** - edit the numbers there.
+
+**Cleanup routine:**
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -99,6 +103,17 @@ No separate env-var field exists in routines, so these live in the **SETTINGS bl
 | `CHUNK_SIZE` | `100` | Emails classified per batch. Big inboxes are chunked - no per-run cap |
 | `LOOKBACK_DAYS` | `30` | First run only: days of past mail to scan before there's any history |
 | `GRADUATE_ROUNDS` | `2` | Confirmed-delete cycles in a row before a rarely-read sender auto-deletes |
+| `DECISIONS_RETENTION_DAYS` | `90` | How long to keep the labelled decision log used for examples + evals |
+| `CONFIDENT_THRESHOLD` | `0.8` | Confidence at/above which a wrong call counts as "confident-wrong" |
+
+**Refine routine:**
+
+| Variable | Default | What it does |
+|---|---|---|
+| `EVAL_DAYS` | `7` | Held-out test window - the candidate prompt is graded on it, never trained on it |
+| `TRAIN_DAYS` | `45` | Patterns are drawn from corrections in days `EVAL_DAYS`..`TRAIN_DAYS` |
+| `EVAL_MAX_RESCUED` / `EVAL_MAX_CONFIRMED` | `50` / `30` | Caps on the candidate test set (bounds cost) |
+| `KEEP_ALL_GUARD` | `0.9` | Candidate must still delete ≥ this fraction of the confirmed sample (blocks "keep everything") |
 
 ## How it decides what to delete
 

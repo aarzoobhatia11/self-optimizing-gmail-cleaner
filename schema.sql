@@ -1,6 +1,6 @@
--- Gmail Cleaner — Supabase schema.
+-- Gmail Cleaner - Supabase schema.
 -- Run this ONCE in your Supabase project's SQL editor. It creates the tables the cleanup routine
--- uses as its private memory. No personal data ever lives in this (public) git repo — it lives only
+-- uses as its private memory. No personal data ever lives in this (public) git repo - it lives only
 -- in your own Supabase project.
 
 -- Run state: a single row that drives the self-pacing phase logic (all timestamps).
@@ -13,15 +13,44 @@ create table if not exists cleaner_state (
 );
 insert into cleaner_state (id) values (1) on conflict (id) do nothing;
 
--- Proposed snapshot: what the last CLASSIFY run labeled "To Delete". Replaces the old second Gmail
--- label — the routine compares this to what's still under "To Delete" on the delete day to learn
--- which mail you confirmed, rescued, or added yourself. Cleared after each delete.
+-- Proposed snapshot: the emails THIS cycle proposed for deletion, plus the metadata the model saw and
+-- its confidence. Short-lived: written when labels are applied, read + cleared on delete day (used to
+-- learn what you confirmed / rescued / added, and to write the permanent decision log).
 create table if not exists cleaner_proposed (
-  message_id  text primary key,
-  sender      text,
-  subject     text,
-  category    text,
-  proposed_at timestamptz default now()
+  message_id         text primary key,
+  sender             text,
+  subject            text,
+  category           text,
+  snippet            text,
+  size_bytes         bigint,
+  is_starred         boolean,
+  is_from_self       boolean,
+  sender_seldom_read boolean,
+  email_date         date,
+  model_confidence   numeric,      -- the model's confidence in its (delete) call, 0..1
+  proposed_at        timestamptz default now()
+);
+
+-- Decision log: one row per reviewed email = the full labelled memory. Stores the metadata the model
+-- saw, what it PREDICTED (+ confidence), and what you ACTUALLY decided. This single table feeds both
+-- the weekly few-shot example picks AND the monthly evaluation in the refine routine.
+create table if not exists cleaner_decisions (
+  id                 bigint generated always as identity primary key,
+  message_id         text not null,
+  decided_at         timestamptz default now(),
+  sender             text,
+  subject            text,
+  snippet            text,
+  size_bytes         bigint,
+  is_starred         boolean,
+  is_from_self       boolean,
+  sender_seldom_read boolean,
+  email_date         date,
+  category           text,
+  model_decision     text check (model_decision in ('keep', 'delete')),  -- what the prompt predicted
+  model_confidence   numeric,                                            -- 0..1 (NULL for user_added)
+  my_decision        text check (my_decision in ('keep', 'delete')),     -- ground truth (your call)
+  outcome            text check (outcome in ('confirmed', 'rescued', 'user_added'))
 );
 
 -- Hard rules: senders/categories that are always kept or always deleted.
@@ -31,18 +60,6 @@ create table if not exists cleaner_rules (
   value    text not null,
   added_at timestamptz default now(),
   unique (kind, value)
-);
-
--- Few-shot examples: your past keep/delete decisions, used to teach the classifier.
-create table if not exists cleaner_examples (
-  id              bigint generated always as identity primary key,
-  sender          text,
-  subject         text,
-  category        text,
-  decision        text check (decision in ('keep', 'delete')),
-  source          text,                    -- 'confirmed' | 'rescued' | 'user_added'
-  confident_wrong boolean default false,   -- model was confident but you overrode it (high-signal)
-  created_at      timestamptz default now()
 );
 
 -- Trust counters: per (category, sender), drive graduation toward auto-delete.

@@ -26,12 +26,14 @@ it weekly, daily, or hourly — extra runs simply do nothing.
 >>> PASTE EVERYTHING BELOW INTO THE INSTRUCTIONS BOX >>>
 
 # SETTINGS — your tuning knobs (use these values wherever the steps below reference them)
-- CYCLE_DAYS = 7            # how often a fresh cleanup cycle starts (7 = weekly)
-- DELETE_AFTER_DAYS = 3     # review window: days between proposal and trash (must be < CYCLE_DAYS)
-- REMIND_EVERY_HOURS = 24   # most often a reminder is sent while a window is open
-- CHUNK_SIZE = 100          # emails classified per batch (no overall cap)
-- LOOKBACK_DAYS = 30        # FIRST run only: days of past mail to scan
-- GRADUATE_ROUNDS = 2       # confirmed-delete rounds before a seldom-read sender auto-deletes
+- CYCLE_DAYS = 7                # how often a fresh cleanup cycle starts (7 = weekly)
+- DELETE_AFTER_DAYS = 3         # review window: days between proposal and trash (must be < CYCLE_DAYS)
+- REMIND_EVERY_HOURS = 24       # most often a reminder is sent while a window is open
+- CHUNK_SIZE = 100              # emails classified per batch (no overall cap)
+- LOOKBACK_DAYS = 30            # FIRST run only: days of past mail to scan
+- GRADUATE_ROUNDS = 2          # confirmed-delete rounds before a seldom-read sender auto-deletes
+- DECISIONS_RETENTION_DAYS = 90 # how long to keep the labelled decision log
+- CONFIDENT_THRESHOLD = 0.8     # confidence at/above which a wrong call counts as "confident-wrong"
 
 # ROLE
 You are my Gmail cleanup agent. The classification rules live in `prompts/classify_prompt.md` in the
@@ -72,13 +74,16 @@ A1. Ensure the Gmail label `To Delete` exists; create it if missing.
 
 A2. Load memory from Supabase:
     - Rules:    `SELECT kind, value FROM cleaner_rules;`
-    - Examples: `SELECT sender, subject, category, decision, source, confident_wrong
-                 FROM cleaner_examples
-                 ORDER BY (source <> 'confirmed') DESC, confident_wrong DESC, created_at DESC
+    - Examples: `SELECT sender, subject, category, my_decision, model_decision, model_confidence, decided_at
+                 FROM cleaner_decisions
+                 ORDER BY (my_decision <> model_decision) DESC,                                         -- corrections first
+                          (my_decision <> model_decision AND model_confidence >= CONFIDENT_THRESHOLD) DESC,  -- confident-but-wrong
+                          decided_at DESC
                  LIMIT 30;`
-                From these, choose the best **5**: corrections first, then confident-but-wrong, then
-                most recent — and make sure they're varied (a mix of keep AND delete, across
-                different categories; never 5 of the same kind).
+                From these, choose the best **5** (the "sharpest"): corrections first, then
+                confident-but-wrong, then most recent — kept varied (a mix of keep AND delete, across
+                different categories; never 5 of the same kind). Use each row's `my_decision` as the
+                example's keep/delete label.
     - Auto-delete senders: `SELECT category, sender FROM cleaner_trust WHERE auto_delete = true;`
 
 A3. Read `prompts/classify_prompt.md`. Fill its `{{RULES}}` slot from A2's rules, and its
@@ -93,15 +98,19 @@ A5. Classify in batches of `CHUNK_SIZE`. Split the emails into chunks of `CHUNK_
     build the metadata input per email (from, subject, snippet ≤300 chars, date, sizeBytes,
     hasAttachments, isFromSelf, isStarred, senderSeldomRead) and classify it per
     `prompts/classify_prompt.md`. (`isStarred` = the email has Gmail's STARRED label.) Merge all chunk
-    results so every `messageId` appears exactly once.
+    results so every `messageId` appears exactly once. Keep each email's `decision`, `confidence`,
+    `category` and the metadata above — you'll store them for learning and evaluation.
 
-A6. Final keep/delete = the email's `decision`, then apply overrides: force KEEP for
-    `always_keep_sender` and `protected_category`; force DELETE for `always_delete_sender` and the
-    A2 auto-delete senders.
+A6. Final keep/delete = the email's `decision`, then apply overrides:
+    - force KEEP for `isStarred`, `isFromSelf`, `always_keep_sender`, and `protected_category`
+      (these are NEVER-DELETE guarantees — they must never end up under the `To Delete` label);
+    - force DELETE for `always_delete_sender` and the A2 auto-delete senders.
 
 A7. Apply results with the connector + Supabase:
-    - every DELETE → add the `To Delete` label, and record the proposal:
-      `INSERT INTO cleaner_proposed (message_id, sender, subject, category)
+    - every DELETE → add the `To Delete` label, and record the proposal WITH the metadata the model saw
+      and its confidence (so Phase C can write a full labelled row):
+      `INSERT INTO cleaner_proposed (message_id, sender, subject, category, snippet, size_bytes,
+        is_starred, is_from_self, sender_seldom_read, email_date, model_confidence)
        VALUES (…) ON CONFLICT (message_id) DO NOTHING;`
     - every time-sensitive KEEP (it has an `eligible_after` date) →
       `INSERT INTO cleaner_deferred (message_id, subject, category, eligible_after) VALUES (…);`
@@ -134,13 +143,21 @@ C1. Work out what I did, by comparing the proposed snapshot to the current label
       (fetch its sender/subject/category from Gmail for the example)
 
 C2. Learn — write to Supabase:
-    - For each decision above, `INSERT INTO cleaner_examples (sender, subject, category, decision,
-      source, confident_wrong) VALUES (…);` then keep only the newest 3 rows per category.
-    - Trust: `INSERT INTO cleaner_trust (category, sender, samples, agree, disagree, seldom_deleted_streak)
+    - **Log the labelled decisions** to `cleaner_decisions` (one row per email — this is the memory the
+      few-shot picker and the refine evals both read):
+      • `confirmed` and `rescued` are already in `cleaner_proposed` (so `model_decision` = 'delete'):
+        copy their stored metadata + `model_confidence`, and set `my_decision` = 'delete' + `outcome` =
+        'confirmed' when still labelled, or `my_decision` = 'keep' + `outcome` = 'rescued' when unticked.
+      • `user_added` (under `To Delete` but NOT in `cleaner_proposed` → the model had KEPT it): fetch its
+        metadata from Gmail and store with `model_decision` = 'keep', `model_confidence` = NULL,
+        `my_decision` = 'delete', `outcome` = 'user_added'.
+      • Then prune old history:
+        `DELETE FROM cleaner_decisions WHERE decided_at < now() - (DECISIONS_RETENTION_DAYS || ' days')::interval;`
+    - **Trust:** `INSERT INTO cleaner_trust (category, sender, samples, agree, disagree, seldom_deleted_streak)
       VALUES (…) ON CONFLICT (category, sender) DO UPDATE SET samples = cleaner_trust.samples + 1, …;`
-    - Graduation: if a seldom-read sender has been confirmed-deleted for `GRADUATE_ROUNDS` cycles in a
+    - **Graduation:** if a seldom-read sender has been confirmed-deleted for `GRADUATE_ROUNDS` cycles in a
       row, `INSERT INTO cleaner_rules (kind, value) VALUES ('always_delete_sender', :sender) ON CONFLICT DO NOTHING;`
-    - If I keep rescuing a sender, add it: `… VALUES ('always_keep_sender', :sender) …`.
+      If I keep rescuing a sender, add it: `… VALUES ('always_keep_sender', :sender) …`.
 
 C3. Delete: move every email currently under the `To Delete` label to Trash (recoverable 30 days).
     If there are none (I unticked everything), delete nothing.
