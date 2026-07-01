@@ -1,254 +1,143 @@
 # self-optimizing-gmail-cleaner
 
-*A Gmail cleanup that runs as a **Claude routine** and **optimizes its own classifier prompt** from
-your keep/delete feedback — so it needs less of your approval every week.*
+A Gmail cleanup that runs as a Claude routine and optimizes its own classifier prompt from your keep/delete feedback.
+
+Clean your inbox on autopilot. It labels what you'd delete, you glance and untick anything to keep, and it trashes the rest a couple of days later - learning your taste so you review less every week.
 
 ## What it does
-A **Claude routine** scans your Gmail on a schedule and labels the mail it thinks you'd delete
-(promotions, expired notices, low-value bulk). You glance at the `To Delete` label in Gmail and
-**untick anything you want to keep** — or **add that label to anything else you want gone** — and a
-couple of days later it moves everything still under the label to Trash (recoverable for 30 days).
-That's the whole review.
 
-**Here's what makes this Gmail cleaner different:** mail that's useful *now* but junk *later* — a flight
-booking, an event ticket, a time-limited offer — isn't deleted early or hoarded forever. It's parked in
-a **carry-forward queue** and quietly brought back for deletion only once it **expires**. And every
-keep/untick you make **teaches it your taste**, so it learns to need less of your review over time.
+- Scans your Gmail on a schedule and labels likely-junk under a single **`To Delete`** label
+- Your whole review: **untick anything to keep**, or add the label to anything you want gone
+- Trashes what's left a couple of days later - recoverable from **Trash for 30 days**
+- Parks time-sensitive keeps (bookings, tickets, offers) and resurfaces them for deletion only once they **expire**
+- **Learns your taste** from every keep/untick, so it needs less of your review each week
+- Runs entirely in **Claude's cloud** - no server, no API credits, and it never sees your email body
 
-**How it runs:** your memory lives in your own **free Supabase database**, the routine runs on whatever
-**frequency you set**, and it **notifies you in the Claude app** when there's something to review.
-Because it runs as a Claude routine, there are **no API credits to buy** and **no server to host** —
-and nothing here ever exposes your email.
+## How it self-optimizes
 
----
+Four feedback loops, all driven by the keep/delete edits you make each cycle:
 
-## 🔄 How it self-optimizes
-The cleaner gets better at predicting *you* through four feedback loops, all driven by the keep/delete
-edits you make each cycle:
+1. **Every decision becomes an example.** Each keep/untick is saved to Supabase. On the next run it ranks your recent decisions **corrections first → confident-but-wrong → most recent**, picks the **top 5** (varied across keep/delete and categories), and injects them into the classifier as few-shot examples. The cap is small on purpose - more examples bias the model.
+2. **Repeat offenders graduate to auto-delete.** Confirm-deleting a rarely-read sender a few cycles in a row promotes it to "always delete" - it stops needing your review.
+3. **Time-sensitive keeps wait in a deferred queue.** A booking or ticket you keep is parked with an expiry date and resurfaced for deletion only once it's stale.
+4. **A monthly PR sharpens the prompt.** The `refine` routine spots patterns in your corrections and opens a GitHub Pull Request improving the classifier's wording - you review and merge.
 
-1. **Every decision becomes an example, and the best 5 are sent as few-shot.** Each email you keep or
-   untick is saved to your Supabase memory. On the next run it pulls your recent decisions, ranks them
-   **corrections first → confident-but-wrong → most recent**, and picks the **top 5** — kept varied (a
-   mix of keeps *and* deletes across different categories, never 5 of the same kind). Those 5 are
-   injected into the classifier prompt as **few-shot examples**, so the model copies *your* judgment.
-   The cap is deliberately small (~5): more examples bias the model rather than help.
-2. **Repeat offenders graduate to auto-delete.** If you confirm deleting a rarely-read sender for a few
-   cycles in a row, that sender is promoted to "always delete" and stops needing your review at all.
-3. **Time-sensitive keeps wait in a deferred queue.** A booking, ticket, or offer you keep is parked
-   with an expiry date and quietly resurfaced for deletion only once it's stale — so kept mail doesn't
-   pile up forever.
-4. **A monthly PR sharpens the prompt.** The `refine` routine looks for *patterns* in your corrections
-   and opens a **GitHub Pull Request** improving the classifier's wording — which you review and merge.
+**Net effect:** recurring mail handles itself, and the pile that needs your eyes shrinks toward just genuinely-new senders. The approval gate never disappears - it's your safety net - you just stop needing it.
 
-```
-        ┌──────────────────────────────────────────────────────────┐
-        │                                                          │
-        ▼                                                          │
-   classify  ──►  you keep / untick  ──►  saved as examples + trust │
-   (proposes)        (your edits)         (corrections first)      │
-        ▲                                          │               │
-        │                                          ▼               │
-        └────────  next run is smarter  ◄──  graduate senders,  ───┘
-                                              resurface expired,
-                                              monthly prompt PR
-```
-
-**Net effect:** the recurring mail starts handling itself, and the pile that actually needs your eyes
-**shrinks toward just genuinely-new senders** — so reviewing becomes optional, not a chore. *(The
-approval gate never disappears — it's your safety net — you just stop needing to use it.)*
-
----
-
-## How it works
-
-```
-  Routine "cleanup" — self-pacing: on each run it does the one phase that's due.
-   ┌─ CLASSIFY      → scans new mail, labels To Delete, notifies "review by <date>"
-   ├─ REMIND        → "N still pending, trashed on <date>"  (at most once a day)
-   └─ DELETE+LEARN  → trashes what's still labeled, learns from your edits, notifies a summary
-
-  You: open the To Delete label in Gmail — untick anything to keep, or add the label to
-       anything else you want gone. That's the whole review.
-
-  Memory (Supabase): your rules, few-shot examples, trust scores, and the carry-forward queue.
-  Routine "refine" (monthly): opens a GitHub PR improving the prompt from your corrections — you merge.
-```
-
-- **Trash only** — nothing is permanently deleted (30-day recovery).
-- **Metadata only** — only sender, subject, a ~300-char snippet, and size go to the model; never full
-  bodies or attachments.
-- **Self-pacing** — the routine decides what to do from timestamps in its memory, so extra triggers are
-  harmless (see [🕒 Scheduling & frequency](#-scheduling--frequency)).
-
----
-
-## 🧰 Tools & accounts you need
+## Accounts and connectors
 
 | Tool / account | What it's for |
 |---|---|
-| **Claude — Pro or Max plan** | Runs the routines in Claude's cloud; no server of your own and no API credits to buy. |
-| **Claude app** | Where you create & watch routines and get review notifications. Use the web ([claude.ai/code](https://claude.ai/code)), the desktop app ([Mac/Windows](https://claude.ai/download)), or the CLI — any works. |
-| **Gmail account + Gmail connector** | Lets the routine read mail *metadata*, manage the `To Delete` label, and move mail to Trash. |
-| **Supabase — free account + connector** | Your private memory database (rules, examples, trust, deferred queue). |
-| **GitHub** *(optional)* | Only for the monthly `refine` routine, which opens prompt-improvement PRs. |
+| **Claude (Pro or Max)** | Runs the routines in Claude's cloud - no server, no API credits |
+| **Claude app** | Create & watch routines and get review notifications - web, desktop, or CLI |
+| **Gmail + connector** | Reads mail metadata, manages the `To Delete` label, moves mail to Trash |
+| **Supabase + connector** | Your private memory database (rules, examples, trust, deferred queue) |
+| **GitHub** | Hosts your fork; the `refine` routine opens prompt-improvement PRs against it |
 
----
+## Setup (~10 minutes)
 
-## Setup (~15 minutes)
+### 1. Fork this repo
+Fork it to your own GitHub so you can attach it to a routine (and let `refine` open PRs). Safe to keep public - no personal data lives here.
 
-**1. Fork or clone this repo** (safe to keep public — no personal data is stored here).
+### 2. Create your memory database
+In [Supabase](https://supabase.com), create a free project → open the **SQL Editor** → paste and run [`schema.sql`](schema.sql). This creates the `cleaner_*` tables.
 
-**2. Create your memory database.** In [Supabase](https://supabase.com), create a free project → open
-the **SQL Editor** → paste and run [`schema.sql`](schema.sql). This creates the `cleaner_*` tables.
+### 3. Connect Gmail and Supabase
+At [claude.ai](https://claude.ai) → Settings → Connectors, connect **Gmail** and **Supabase** (authorize your Supabase project).
 
-**3. Connect the connectors in Claude.** At [claude.ai](https://claude.ai) → Settings → Connectors,
-connect **Gmail** and **Supabase** (authorize your Supabase project). *(See [🧰 Tools & accounts](#-tools--accounts-you-need).)*
-
-**4. Create Routine 1 — Cleanup Gmail.** At [claude.ai/code/routines](https://claude.ai/code/routines)
-→ **New routine**, and fill each section exactly:
-
-| Section | What to put |
-|---|---|
-| **Name** | `Cleanup Gmail` (cosmetic — anything works). |
-| **Instructions** | `Read routines/cleanup_gmail.md from the attached repo and follow the instructions in the block between the >>> and <<< markers exactly, using the SETTINGS values at the top of that block. The classification rules are in prompts/classify_prompt.md in the same repo.` |
-| **Repo** | Attach this repo. |
-| **Connectors** | **Gmail + Supabase** only (no GitHub). |
-| **Trigger** | **Weekly**, one trigger (e.g. Mon 8am). Keeps the free Supabase tier awake, and the routine self-paces. |
-| **Behavior** | Defaults are fine. |
-| **Notifications** | Turn **on push** — this is how you get the "review by `<date>`" and "cleanup done" pings. |
-| **Permissions** | Leave **"Allow unrestricted git push" OFF** — cleanup never pushes to git, it only labels/trashes mail. |
-| **Environment** | Leave **empty** — no secrets (Gmail/Supabase use connectors); tuning values live in the repo SETTINGS block. |
-
-*Adjust tuning values in the SETTINGS block at the top of [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) — see [⚙️ Settings explained](#️-settings-explained-environment-variables). For a first test set `LOOKBACK_DAYS=3`, then use **Run now**.*
-
-**5. Create Routine 2 — Refine Cleanup Prompt.** **New routine** again:
+### 4. Create Routine 1 - Cleanup Gmail
+At [claude.ai/code/routines](https://claude.ai/code/routines) → New routine, fill each section:
 
 | Section | What to put |
 |---|---|
-| **Name** | `Refine Cleanup Prompt`. |
-| **Instructions** | `Read routines/refine_cleanup_prompt.md from the attached repo and follow the instructions in the block between the >>> and <<< markers exactly. Open a Pull Request with the change; never merge it yourself and never edit main directly.` |
-| **Repo** | Attach this repo. |
-| **Connectors** | **Supabase** only (no Gmail — it never touches mail). GitHub is **not** a connector here — repo + PR access comes from **attaching this repo** (the chip with the branch icon). Make sure your Claude–GitHub integration has **write** access to the repo. |
-| **Trigger** | **Custom** cron `0 9 1 * *` → 9 AM on the 1st of each month. |
-| **Behavior** | Defaults are fine. |
-| **Notifications** | Turn **on push** so you're told when a PR is opened. |
-| **Permissions** | Leave **"Allow unrestricted git push" OFF** — it opens a PR via the GitHub connector and must never push to `main`. |
-| **Environment** | Leave **empty**. |
+| **Name** | `Cleanup Gmail` (cosmetic) |
+| **Instructions** | `Read routines/cleanup_gmail.md from the attached repo and follow the block between the >>> and <<< markers exactly, using the SETTINGS at the top. The classification rules are in prompts/classify_prompt.md.` |
+| **Repo** | Attach your fork |
+| **Connectors** | **Gmail + Supabase** only |
+| **Trigger** | **Weekly**, one trigger (e.g. Mon 8am) - the routine self-paces |
+| **Behavior** | Defaults |
+| **Notifications** | **Push on** - how you get the "review by" and "done" pings |
+| **Permissions** | Leave **"Allow unrestricted git push" OFF** |
+| **Environment** | Leave **empty** - tuning values live in the repo SETTINGS block |
 
-*Monthly, it reads your corrections from Supabase, finds patterns, and opens a PR tweaking
-`prompts/classify_prompt.md` for you to review and merge (or opens nothing if there's no clear pattern).
-Your weekly cleanup keeps Supabase active, so the monthly cadence never hits the 7-day pause.*
+For a first test, set `LOOKBACK_DAYS=3` in the SETTINGS block, then use **Run now**.
 
----
+### 5. Create Routine 2 - Refine Cleanup Prompt
+New routine again:
 
-## ⚙️ Settings explained (environment variables)
+| Section | What to put |
+|---|---|
+| **Name** | `Refine Cleanup Prompt` |
+| **Instructions** | `Read routines/refine_cleanup_prompt.md from the attached repo and follow the block between the >>> and <<< markers exactly. Open a Pull Request; never merge it yourself or edit main.` |
+| **Repo** | Attach your fork (this is your GitHub access - GitHub is not a separate connector) |
+| **Connectors** | **Supabase** only |
+| **Trigger** | **Custom** cron `0 9 1 * *` (9am on the 1st) |
+| **Behavior** | Defaults |
+| **Notifications** | **Push on** |
+| **Permissions** | Leave **"Allow unrestricted git push" OFF** |
+| **Environment** | Leave **empty** |
 
-Routines have no separate env-var field, so these live in the **SETTINGS block at the top of the
-`cleanup` routine's instructions** (already filled with these defaults — edit the numbers there).
+## How to test?
+
+Use **Run now** to test without waiting for the schedule:
+
+1. **First run** → it classifies: a `To Delete` label appears, nothing is trashed
+2. **Untick a couple of emails** to simulate rescuing them
+3. **Force the delete phase** - in Supabase run `UPDATE cleaner_state SET pending_since = now() - interval '4 days' WHERE id = 1;` then **Run now** → it trashes what's still labeled and writes to your `cleaner_*` tables
+
+Open each run's **session transcript** to see exactly what it did.
+
+## Environment Variables
+
+No separate env-var field exists in routines, so these live in the **SETTINGS block at the top of the `cleanup` routine's instructions** - edit the numbers there.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `CYCLE_DAYS` | `7` | How often a fresh cleanup cycle starts (the gap between CLASSIFY runs). `7` = weekly. Keep **≤ 7 on free-tier Supabase** (see Scheduling & frequency). |
-| `DELETE_AFTER_DAYS` | `3` | Your **review window** — days between a proposal and the actual trash. Must be **less than `CYCLE_DAYS`**; recommended minimum **2**. |
-| `REMIND_EVERY_HOURS` | `24` | The most often a reminder is sent while a window is open — prevents notification spam if the routine fires frequently. |
-| `CHUNK_SIZE` | `100` | How many emails the classifier handles per batch. Large inboxes are processed in chunks instead of one giant call — there's no per-run cap. |
-| `LOOKBACK_DAYS` | `30` | **First run only:** how many days of past mail to scan before there's any history. After that it scans since the last cleanup. |
-| `GRADUATE_ROUNDS` | `2` | How many cycles in a row a rarely-read sender must be confirmed-deleted before it auto-deletes without asking. |
-
----
-
-## ✅ Your review: approving deletes & rescuing mail
-
-The cleaner uses a **single Gmail label, `To Delete`** — that's the only label you ever see or touch.
-
-- **When a cleanup runs** you get a Claude notification and a **`To Delete (N)`** label appears in Gmail.
-- **To save a mail from deletion:** open the `To Delete` label and **remove it** from anything you want to keep — any time before the delete day.
-- **To delete something yourself:** add the `To Delete` label to anything from this cycle you want gone.
-- **On the delete day** the routine trashes whatever is *still* under `To Delete` and sends a summary. Everything stays in **Trash for 30 days** if you change your mind.
-
-**How it learns from your edits.** The routine remembers what it proposed (in its Supabase memory — not
-as a label you see), then compares that to what's still under `To Delete` on the delete day:
-
-| What happened | The routine reads it as |
-|---|---|
-| It proposed it **and** it's still under `To Delete` | You **confirmed** the deletion. |
-| It proposed it but you **removed** the label | You **rescued** it (keep). |
-| It's under `To Delete` but the routine **didn't** propose it | You **added** it yourself. |
-
-### What categories are for
-Every email the classifier looks at gets a short **category** tag — `offer`, `receipt`, `booking`,
-`hr`, `security`, `pm_material`, `other`, and so on. Categories aren't Gmail labels; they live in the
-model's output and your Supabase memory, and they do three jobs:
-- **Smarter learning** — trust and "graduate to auto-delete" are tracked *per category + sender*, so a
-  sender you delete as `offer` is judged separately from one you keep as `receipt`.
-- **Balanced examples** — few-shot examples are picked to span *different* categories, so the model sees
-  variety instead of five of the same kind.
-- **Category-level rules** — you can protect a whole category (e.g. never delete anything `hr`).
-
----
-
-## 🕒 Scheduling & frequency
-
-**Recommended: one weekly trigger** (e.g. Mon 8am). You always get at least `DELETE_AFTER_DAYS`
-(default 3 days) to review before anything is trashed, and firing it more often than weekly is safe —
-reminders are throttled and any extra runs simply do nothing.
-
-**Want it less often than weekly (e.g. monthly)?** The free Supabase tier pauses a project after 7 days
-with no queries, so either use **Supabase Pro** (never pauses) or add a small **keep-alive ping** — a
-tiny query every few days that keeps the database awake.
-
-There's **no per-run email cap** — each run cleans everything new since the last one. The only
-recommendation is to **run it weekly**.
-
-**How different schedules behave** (`CYCLE_DAYS=7`, `DELETE_AFTER_DAYS=3`):
-
-| You schedule… | Notifications per week | Review time before delete |
-|---|---|---|
-| Weekly | ~2 (ready + done) | full 7 days |
-| Daily | ~4 (ready + ~2 reminders + done) | 3 days |
-| Hourly / every 2h | ~5 — throttles absorb the rest | 3 days |
-
----
+| `CYCLE_DAYS` | `7` | How often a fresh cycle starts. `7` = weekly. Keep **≤ 7 on free Supabase** (it pauses after 7 idle days) |
+| `DELETE_AFTER_DAYS` | `3` | Review window - days between proposal and trash. Must be **< `CYCLE_DAYS`** |
+| `REMIND_EVERY_HOURS` | `24` | Most often a reminder is sent while a window is open - prevents spam |
+| `CHUNK_SIZE` | `100` | Emails classified per batch. Big inboxes are chunked - no per-run cap |
+| `LOOKBACK_DAYS` | `30` | First run only: days of past mail to scan before there's any history |
+| `GRADUATE_ROUNDS` | `2` | Confirmed-delete cycles in a row before a rarely-read sender auto-deletes |
 
 ## How it decides what to delete
-All in [`prompts/classify_prompt.md`](prompts/classify_prompt.md): a few hard rules (NEVER-DELETE,
-ALWAYS-KEEP, ALWAYS-DELETE) plus judgment for everything else (it keeps when unsure, and leans toward
-deleting heavy low-value mail and senders you rarely read). It scans all of your mail — Primary,
-Promotions, Updates, Social, Forums — but **never touches Spam or Trash**. Tweak that file to change
-behavior.
 
----
+All in [`prompts/classify_prompt.md`](prompts/classify_prompt.md): a few hard rules (NEVER-DELETE, ALWAYS-KEEP, ALWAYS-DELETE) plus judgment for the rest - it keeps when unsure, and leans toward deleting heavy, low-value mail from senders you rarely read. It scans every category (Primary, Promotions, Updates, Social, Forums) but **never touches Spam or Trash**. Edit that file to change behavior.
+
+## Reviewing and rescuing mail
+
+One label, **`To Delete`** - the only one you ever touch.
+
+- **When a cleanup runs** you get a Claude notification and a **`To Delete (N)`** label in Gmail
+- **To keep something:** remove the `To Delete` label from it, any time before the delete day
+- **To delete something yourself:** add the `To Delete` label to it
+- **On the delete day** whatever is still labeled goes to Trash - recoverable for 30 days
+
+The routine remembers what it proposed (in Supabase, not a visible label) and compares it to what's still labeled on the delete day:
+
+| What happened | Read as |
+|---|---|
+| Proposed **and** still labeled | You **confirmed** the delete |
+| Proposed but you **removed** the label | You **rescued** it (keep) |
+| Labeled but **not** proposed | You **added** it yourself |
+
+**What categories are for.** Each email gets a short category tag (`offer`, `receipt`, `hr`, `security`, ...). They aren't Gmail labels - they live in Supabase and drive three things: per-category-and-sender trust/graduation, balanced few-shot variety, and category-level protection (e.g. never delete `hr`).
 
 ## Privacy & safety
-- Your email patterns live only in **your** Supabase project — never in this repo.
-- The model only ever sees metadata + a short snippet — **never full email bodies or attachments**.
-- The routine only applies the **TRASH** label; it can never permanently delete.
 
-**How the "snippet" is obtained:** the snippet is the short plaintext preview **Gmail itself generates**
-(the Gmail API's `snippet` field — the same one-line preview you see in your inbox list), which the
-routine truncates to ≤300 characters. The model never receives the full message body.
+- Your email patterns live only in **your** Supabase project - never in this repo
+- The model sees only metadata + a short snippet - **never full bodies or attachments**
+- The routine only applies the **TRASH** label - it can never permanently delete
 
----
-
-## Testing after setup
-Use **"Run now"** to test without waiting for the schedule:
-1. **First run** → it classifies: a `To Delete` label appears in Gmail, nothing is trashed.
-2. **Untick a couple of emails** (remove the `To Delete` label) to simulate rescuing them.
-3. **Force the delete phase now** — in Supabase run:
-   `UPDATE cleaner_state SET pending_since = now() - interval '4 days' WHERE id = 1;`
-   then **Run now** → it trashes whatever's still under `To Delete` and writes to your `cleaner_*` tables.
-
-Open each run's **session transcript** to see exactly what it did (a green status means it ran, not that
-it succeeded).
-
----
+The "snippet" is the short preview **Gmail itself generates** (the API's `snippet` field), truncated to ≤300 characters.
 
 ## Repo contents
+
 | File | What it is |
 |---|---|
-| `prompts/classify_prompt.md` | The classification prompt (rules + judgment). |
-| `routines/cleanup_gmail.md` | Routine 1 — classify → remind → delete → learn (paste into the routine). |
-| `routines/refine_cleanup_prompt.md` | Routine 2 — monthly prompt-improvement PR. |
-| `schema.sql` | The Supabase tables (run once). |
+| [`prompts/classify_prompt.md`](prompts/classify_prompt.md) | The classification prompt (rules + judgment) |
+| [`routines/cleanup_gmail.md`](routines/cleanup_gmail.md) | Routine 1 - classify → remind → delete → learn |
+| [`routines/refine_cleanup_prompt.md`](routines/refine_cleanup_prompt.md) | Routine 2 - monthly prompt-improvement PR |
+| [`schema.sql`](schema.sql) | The Supabase tables (run once) |
 
 Issues and PRs welcome.
