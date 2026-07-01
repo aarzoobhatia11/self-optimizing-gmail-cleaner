@@ -74,16 +74,21 @@ A1. Ensure the Gmail label `To Delete` exists; create it if missing.
 
 A2. Load memory from Supabase:
     - Rules:    `SELECT kind, value FROM cleaner_rules;`
-    - Examples: `SELECT sender, subject, category, my_decision, model_decision, model_confidence, decided_at
-                 FROM cleaner_decisions
-                 ORDER BY (my_decision <> model_decision) DESC,                                         -- corrections first
-                          (my_decision <> model_decision AND model_confidence >= CONFIDENT_THRESHOLD) DESC,  -- confident-but-wrong
-                          decided_at DESC
-                 LIMIT 30;`
-                From these, choose the best **5** (the "sharpest"): corrections first, then
-                confident-but-wrong, then most recent — kept varied (a mix of keep AND delete, across
-                different categories; never 5 of the same kind). Use each row's `my_decision` as the
-                example's keep/delete label.
+    - Examples: pull two pools from `cleaner_decisions`, then compose the final 5.
+      • Corrections (where I overrode it):
+        `SELECT sender, subject, category, my_decision, model_confidence, decided_at
+         FROM cleaner_decisions WHERE my_decision <> model_decision
+         ORDER BY (model_confidence >= CONFIDENT_THRESHOLD) DESC, decided_at DESC LIMIT 20;`
+      • Confirmations (where it got it right):
+        `SELECT sender, subject, category, my_decision, decided_at
+         FROM cleaner_decisions WHERE my_decision = model_decision
+         ORDER BY decided_at DESC LIMIT 20;`
+      Compose the final **5**: about **3 corrections** (confident-but-wrong first, then most recent)
+      plus about **2 representative confirmations** — so it learns from its mistakes without ONLY ever
+      seeing mistakes (an all-error set biases the model). Keep the whole set varied (a mix of keep AND
+      delete, across different categories; never 5 of the same kind). Use each row's `my_decision` as
+      the example's keep/delete label. If there are fewer than 3 corrections, fill from confirmations,
+      and vice versa.
     - Auto-delete senders: `SELECT category, sender FROM cleaner_trust WHERE auto_delete = true;`
 
 A3. Read `prompts/classify_prompt.md`. Fill its `{{RULES}}` slot from A2's rules, and its

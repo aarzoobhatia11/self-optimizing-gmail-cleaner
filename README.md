@@ -17,7 +17,7 @@ Clean your inbox on autopilot. It labels what you'd delete, you glance and untic
 
 Four feedback loops, all driven by the keep/delete edits you make each cycle:
 
-1. **Every decision becomes an example.** Each keep/untick is saved to Supabase. On the next run it ranks your recent decisions **corrections first → confident-but-wrong → most recent**, picks the **top 5** (varied across keep/delete and categories), and injects them into the classifier as few-shot examples. The cap is small on purpose - more examples bias the model.
+1. **Every decision becomes an example.** Each keep/untick is saved to Supabase. On the next run it picks 5 sharp examples - **mostly your corrections** (the cases it got wrong, confident-but-wrong first), **plus a couple of representative "got it right" cases so the set stays balanced** - and injects them into the classifier as few-shot examples. Balance matters: an all-error set biases the model, so it's kept varied across keep/delete and categories.
 2. **Repeat offenders graduate to auto-delete.** Confirm-deleting a rarely-read sender a few cycles in a row promotes it to "always delete" - it stops needing your review.
 3. **Time-sensitive keeps wait in a deferred queue.** A booking or ticket you keep is parked with an expiry date and resurfaced for deletion only once it's stale.
 4. **A monthly PR sharpens the prompt, but only if it passes an eval.** The `refine` routine spots patterns in last month's corrections and drafts a wording change - then **tests it on a held-out week it never learned from** and opens a GitHub Pull Request **only if the change reduces your false-deletes** without breaking the hard rules. You review and merge.
