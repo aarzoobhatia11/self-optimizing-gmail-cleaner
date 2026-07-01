@@ -153,7 +153,8 @@ C4. Tidy up:
 
 C5. Notify me: "Cleanup done: moved N (~SIZE) to Trash, kept M. Recoverable from Trash for 30 days."
 
-# REPORTING
-End every run with a one-line summary of what you did: classified N / reminded / deleted N / nothing.
+# OUTPUT
+End every run with a one-line summary of the phase(s) you ran, in this format:
+`classified N` / `reminded` / `deleted N, kept M` / `nothing due`.
 
 <<< END PASTE <<<

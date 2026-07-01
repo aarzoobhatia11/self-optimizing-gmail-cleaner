@@ -68,6 +68,7 @@ prompt's rules/wording so the classifier repeats fewer of the same mistakes next
 6. **If there's no clear pattern** or nothing worth changing, open no PR and stop.
 
 # OUTPUT
-End with a one-line summary: `opened PR #<n>` or `no changes needed`.
+End with a one-line summary of what you did, in this format:
+`opened PR #<n>` / `no changes needed`.
 
 <<< END PASTE <<<
